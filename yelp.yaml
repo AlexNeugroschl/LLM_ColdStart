@@ -1,0 +1,30 @@
+# ==================================
+# Dataset & Model Settings
+# ==================================
+dataset: yelp
+model: BPR
+epochs: 300
+train_batch_size: 4096
+eval_batch_size: 40960
+
+# ==================================
+# The Strict Item-Holdout Configuration
+# ==================================
+# 1. Force RecBole to load your pre-split files instead of the master file
+benchmark_filename: ['train', 'valid', 'test']
+
+# 2. Disable internal interaction splitting (since our files are already split)
+eval_args:
+  split: {'RS': [1.0, 0.0, 0.0]} 
+  group_by: user
+  order: RO
+  mode: full
+
+# ==================================
+# Evaluation Metrics
+# ==================================
+# Focus on Top-10 Ranking and Catalog Coverage
+metrics: ['Hit', 'NDCG']
+topk: [10]
+valid_metric: NDCG@10
+metric_decimal_place: 4

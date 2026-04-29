@@ -1,5 +1,5 @@
 from src.data_loader import load_data
-from src.modifiers import apply_knn
+from src.modifiers import apply_knn, apply_tfidf_knn
 from src.trainer import train_model
 from src.evaluator import evaluate
 
@@ -36,17 +36,29 @@ class ColdStartExperiment:
         return results
 
 if __name__ == "__main__":
-    experiment = ColdStartExperiment('yelp')
+    experiment = ColdStartExperiment('amazon-office')
     
-    # 1. Get the Baseline
-    # baseline_metrics = experiment.run_single_pass()
+    # Contestant 1: The Blind Baseline
+    baseline_metrics = experiment.run_single_pass()
     
-    # 2. Test your new KNN approach (Threshold = 5, Neighbors = 5)
-    # We use a lambda so we can pass our custom parameters to the modifier
+    # Contestant 2: The TF-IDF Keyword Baseline
+    tfidf_modifier = lambda state: apply_tfidf_knn(state, threshold=5, k_neighbors=5)
+    tfidf_metrics = experiment.run_single_pass(modifier_func=tfidf_modifier)
+    
+    # Contestant 3: Your Ollama LLM
     knn_modifier = lambda state: apply_knn(state, threshold=5, k_neighbors=5, embed_model='mxbai-embed-large')
-    
     knn_metrics = experiment.run_single_pass(modifier_func=knn_modifier)
 
-    print("\n=== KNN TEST METRICS ===")
-    for metric, value in knn_metrics.items():
-        print(f"{metric}: {value:.4f}")
+    print("\n" + "="*60)
+    print(" 🏆 FINAL RESEARCH SCORECARD 🏆")
+    print("="*60)
+    print(f"{'Metric':<10} | {'BPR (Zero)':<12} | {'TF-IDF (1990s)':<15} | {'Ollama LLM':<15}")
+    print("-" * 60)
+    
+    for metric in baseline_metrics.keys():
+        if metric in knn_metrics and metric in tfidf_metrics:
+            base_val = baseline_metrics[metric]
+            tf_val = tfidf_metrics[metric]
+            knn_val = knn_metrics[metric]
+            print(f"{metric:<10} | {base_val:<12.4f} | {tf_val:<15.4f} | {knn_val:<15.4f}")
+    print("="*60)

@@ -3,6 +3,8 @@ import copy
 import numpy as np
 import concurrent.futures
 import torch
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 import faiss
 import ollama
 from tqdm import tqdm # pip install tqdm (Highly recommended for progress tracking)
@@ -72,10 +74,20 @@ def apply_knn(payload, threshold=5, k_neighbors=5, embed_model='mxbai-embed-larg
                 title = decode_feature(dataset, 'movie_title', item_id)
                 genres = decode_feature(dataset, 'class', item_id)
                 text = f"Movie Title: {title}. Genres: {genres}."
-            elif ds_name == 'amazon-books':
+            elif ds_name in ['amazon-office', 'amazon-digital-music']:
                 title = decode_feature(dataset, 'title', item_id)
                 categories = decode_feature(dataset, 'categories', item_id)
-                text = f"Book Title: {title}. Categories: {categories}."
+                brand = decode_feature(dataset, 'brand', item_id)
+                description = decode_feature(dataset, 'description', item_id)
+                
+                # The optimized semantic payload (Prompt Engineered)
+                text = (
+                    f"Represent this Amazon product for recommendation based on its core category and utility:\n"
+                    f"Brand: {brand}\n"
+                    f"Title: {title}\n"
+                    f"Category: {categories}\n"
+                    f"Key Details: {description[:300]}" # Truncate marketing fluff
+                )
             else: # Yelp
                 name = decode_feature(dataset, 'item_name', item_id)
                 categories = decode_feature(dataset, 'categories', item_id)
@@ -140,5 +152,72 @@ def apply_knn(payload, threshold=5, k_neighbors=5, embed_model='mxbai-embed-larg
             model.item_embedding.weight.data[cold_id] = imputed_weight
 
     print("KNN Semantic Imputation complete!")
+    state['model'] = model
+    return state
+
+def apply_tfidf_knn(payload, threshold=5, k_neighbors=5):
+    print(f"\n--- Applying TF-IDF Baseline Imputation (Threshold < {threshold}) ---")
+    state = copy.copy(payload)
+    model = state['model']
+    dataset = state['dataset']
+    ds_name = state['config']['dataset']
+    
+    item_num = dataset.item_num
+    train_inter = state['train_data'].dataset.inter_feat
+    item_counts = np.bincount(train_inter['item_id'].numpy(), minlength=item_num)
+    
+    warm_item_ids = np.where((item_counts >= threshold) & (np.arange(item_num) > 0))[0]
+    cold_item_ids = np.where((item_counts < threshold) & (np.arange(item_num) > 0))[0]
+    
+    def decode_feature(dataset, field, item_id):
+        if field not in dataset.item_feat: return "Unknown"
+        tensor_val = dataset.item_feat[field][item_id]
+        if tensor_val.dim() == 0:  
+            tid = tensor_val.item()
+            return str(dataset.id2token(field, tid)) if tid != 0 else "Unknown"
+        else:  
+            tids = [t for t in tensor_val.tolist() if t != 0]
+            if not tids: return "Unknown"
+            return " ".join([str(dataset.id2token(field, t)) for t in tids])
+
+    # 1. Build Text Corpus
+    print("Pre-processing text for TF-IDF...")
+    item_texts = []
+    for item_id in range(item_num):
+        if item_id == 0:
+            item_texts.append("")
+            continue
+            
+        title = decode_feature(dataset, 'title', item_id)
+        categories = decode_feature(dataset, 'categories', item_id)
+        brand = decode_feature(dataset, 'brand', item_id)
+        description = decode_feature(dataset, 'description', item_id)
+        
+        # Exact same text payload as the LLM for a fair fight!
+        text = f"{brand} {title} {categories} {description[:300]}"
+        item_texts.append(text)
+
+    # 2. Generate TF-IDF Vectors
+    print("Vectorizing corpus using TF-IDF...")
+    vectorizer = TfidfVectorizer(stop_words='english', max_features=5000)
+    all_vectors = vectorizer.fit_transform(item_texts)
+
+    warm_vectors = all_vectors[warm_item_ids]
+    cold_vectors = all_vectors[cold_item_ids]
+
+    # 3. Compute Cosine Similarity & Impute
+    print(f"Calculating Top-{k_neighbors} neighbors and overwriting weights...")
+    similarity_matrix = cosine_similarity(cold_vectors, warm_vectors)
+    
+    with torch.no_grad():
+        for i, cold_id in enumerate(tqdm(cold_item_ids, desc="Imputing")):
+            # Get indices of top K most similar warm items
+            top_k_indices = np.argsort(similarity_matrix[i])[-k_neighbors:]
+            neighbor_actual_ids = warm_item_ids[top_k_indices]
+            
+            neighbor_weights = model.item_embedding.weight.data[neighbor_actual_ids]
+            model.item_embedding.weight.data[cold_id] = torch.mean(neighbor_weights, dim=0)
+
+    print("TF-IDF Imputation complete!")
     state['model'] = model
     return state

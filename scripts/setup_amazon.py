@@ -65,8 +65,13 @@ def download_and_convert(ds_name, urls):
     with urllib.request.urlopen(req) as response:
         with gzip.GzipFile(fileobj=response) as gz:
             items = []
+            asin_to_text = {}  # <-- NEW: Initialize the dictionary
+            
             for line in gz:
                 data = parse_line(line)
+                asin = data.get('asin', '')
+                if not asin:
+                    continue
                 
                 # 1. Clean Title
                 title = str(data.get('title', '')).replace('\t', ' ').replace('\n', ' ').strip()
@@ -82,7 +87,7 @@ def download_and_convert(ds_name, urls):
                 if not brand:
                     brand = 'Unknown_Brand'
                 # RecBole tokens shouldn't have spaces
-                brand = brand.replace(' ', '_')
+                brand_token = brand.replace(' ', '_')
 
                 # 4. Extract and Combine Descriptions & Features
                 desc_list = data.get('description', [])
@@ -98,17 +103,33 @@ def download_and_convert(ds_name, urls):
                 if not full_desc:
                     full_desc = 'No_Description'
 
+                # --- NEW: Build the clean string for the LLM and add it to our dictionary ---
+                # We use the original 'brand' here instead of 'brand_token' so the LLM reads natural English
+                clean_cat = cat_seq.replace('_', ' ')
+                clean_text = f"Title: {title} | Brand: {brand} | Categories: {clean_cat} | Description: {full_desc}"
+                asin_to_text[asin] = clean_text
+                # ---------------------------------------------------------------------------
+
                 items.append({
-                    'item_id:token': data.get('asin', ''),
+                    'item_id:token': asin,
                     'title:token_seq': title if title else 'No_Title',
                     'categories:token_seq': cat_seq,
-                    'brand:token': brand,
+                    'brand:token': brand_token,
                     'description:token_seq': full_desc
                 })
+                
+            # Save the RecBole .item file
             df_item = pd.DataFrame(items)
             df_item.drop_duplicates(subset=['item_id:token'], inplace=True)
             df_item.to_csv(item_out, sep='\t', index=False)
             print(f"Saved {len(df_item)} rich semantic items to {item_out}")
+
+            # --- NEW: Save the clean text JSON file for your overnight script ---
+            json_out = os.path.join(out_dir, 'asin_to_text.json')
+            with open(json_out, 'w') as f:
+                json.dump(asin_to_text, f)
+            print(f"Saved clean LLM text mapping to {json_out}")
+            # --------------------------------------------------------------------
 
 if __name__ == "__main__":
     for name, urls in DATASETS.items():

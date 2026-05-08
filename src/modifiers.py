@@ -10,7 +10,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import faiss
 import ollama
-from tqdm import tqdm # pip install tqdm (Highly recommended for progress tracking)
+from tqdm import tqdm
+
 
 def apply_knn(payload, threshold=5, k_neighbors=5, embed_model='mxbai-embed-large'):
     print(f"\n--- Applying FAISS KNN Semantic Imputation (Threshold < {threshold}) ---")
@@ -39,9 +40,6 @@ def apply_knn(payload, threshold=5, k_neighbors=5, embed_model='mxbai-embed-larg
         print("No cold items found based on threshold. Skipping imputation.")
         return state
 
-    # ---------------------------------------------------------
-    # 2. GENERATE OR LOAD SEMANTIC EMBEDDINGS
-    # ---------------------------------------------------------
     # ---------------------------------------------------------
     # 2. GENERATE OR LOAD SEMANTIC EMBEDDINGS (PARALLELIZED)
     # ---------------------------------------------------------
@@ -225,32 +223,31 @@ def apply_tfidf_knn(payload, threshold=5, k_neighbors=5):
     state['model'] = model
     return state
 
+
+
 # =========================================================
-# THE PROJECTION NETWORK (Embedding Mapper)
+# THE PROJECTION NETWORK (Now with LayerNorm)
 # =========================================================
 class EmbeddingMapper(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim=256):
+    def __init__(self, input_dim, output_dim):
         super(EmbeddingMapper, self).__init__()
         self.network = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.GELU(), # GELU often works better than ReLU for NLP embeddings
+            nn.Linear(input_dim, 512),
+            nn.LayerNorm(512),         # <--- Forces variance, fights mode collapse
+            nn.GELU(),
             nn.Dropout(0.2),
-            nn.Linear(hidden_dim, output_dim)
+            nn.Linear(512, 256),
+            nn.LayerNorm(256),         # <--- Fights mode collapse
+            nn.GELU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, output_dim)
         )
 
     def forward(self, x):
         return self.network(x)
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import copy
-import os
-import numpy as np
-from tqdm import tqdm
-
-def apply_contrastive_mapper(payload, threshold=5, embed_model='mxbai-embed-large', epochs=150):
-    print(f"\n--- Training Contrastive Projection Network (Epochs: {epochs}) ---")
+def apply_contrastive_mapper(payload, threshold=5, embed_model='mxbai-embed-large', epochs=100):
+    print(f"\n--- Training InfoNCE Projection Network (Epochs: {epochs}) ---")
     state = copy.copy(payload)
     model = state['model']
     dataset = state['dataset']
@@ -263,62 +260,61 @@ def apply_contrastive_mapper(payload, threshold=5, embed_model='mxbai-embed-larg
     warm_item_ids = np.where((item_counts >= threshold) & (np.arange(item_num) > 0))[0]
     cold_item_ids = np.where((item_counts < threshold) & (np.arange(item_num) > 0))[0]
 
-    # 1. Load Ollama Cache
     cache_file = f"dataset/{ds_name}/{ds_name}_{embed_model}_embeddings.npy"
     all_embeddings = np.load(cache_file)
     
     device = model.device
     X_warm = torch.tensor(all_embeddings[warm_item_ids], dtype=torch.float32).to(device)
     X_cold = torch.tensor(all_embeddings[cold_item_ids], dtype=torch.float32).to(device)
-    
     Y_warm_true = model.item_embedding.weight.data[warm_item_ids].clone().detach().to(device)
     
-    # 2. Setup the Neural Network & DataLoader
+    # 1. Normalize Inputs (Fix 4)
+    X_warm = torch.nn.functional.normalize(X_warm, p=2, dim=1)
+    X_cold = torch.nn.functional.normalize(X_cold, p=2, dim=1)
+
     mapper = EmbeddingMapper(X_warm.shape[1], Y_warm_true.shape[1]).to(device)
     
-    # Margin 0.5 is optimal for normalized hypersphere vectors
-    criterion = nn.TripletMarginLoss(margin=0.5, p=2) 
-    optimizer = optim.Adam(mapper.parameters(), lr=0.001, weight_decay=1e-4)
+    # We use CrossEntropy for InfoNCE
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(mapper.parameters(), lr=0.001)
     
-    # MINI-BATCHING: This gives the network thousands of learning steps instead of 150
+    # Batch size needs to be large for InfoNCE so there are many negatives
+    batch_size = min(1024, len(warm_item_ids)) 
     train_dataset = data.TensorDataset(X_warm, Y_warm_true)
-    dataloader = data.DataLoader(train_dataset, batch_size=256, shuffle=True)
+    dataloader = data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     
-    print("Learning Semantic -> Collaborative mapping via Mini-Batch Triplet Loss...")
+    print("Learning mapping via InfoNCE (CLIP) Loss...")
     mapper.train()
+    temperature = 0.07 # Standard temperature for InfoNCE
     
     for epoch in tqdm(range(epochs), desc="Training Mapper"):
         for batch_X, batch_Y in dataloader:
             optimizer.zero_grad()
             
-            # The Anchor (Our Network's Guess)
+            # 1. Predict
             anchor = mapper(batch_X)
             
-            # The Negative (Randomly shuffled targets within the mini-batch)
-            random_indices = torch.randperm(batch_Y.size(0))
-            negative = batch_Y[random_indices]
+            # 2. Normalize both to unit sphere to isolate Angles
+            pred_norm = nn.functional.normalize(anchor, p=2, dim=1)
+            actual_norm = nn.functional.normalize(batch_Y, p=2, dim=1)
             
-            # CRITICAL FIX: Normalize everything to length 1.0 BEFORE calculating loss.
-            # This forces the network to learn pure "Angles/Direction" and completely ignores Popularity lengths.
-            anchor_norm = torch.nn.functional.normalize(anchor, p=2, dim=1)
-            pos_norm = torch.nn.functional.normalize(batch_Y, p=2, dim=1)
-            neg_norm = torch.nn.functional.normalize(negative, p=2, dim=1)
+            # 3. InfoNCE Similarity Matrix (Every item vs Every item)
+            sim_matrix = torch.matmul(pred_norm, actual_norm.T) / temperature
             
-            loss = criterion(anchor_norm, pos_norm, neg_norm)
+            # The correct target is the diagonal (Item i should match Item i)
+            labels = torch.arange(len(batch_X)).to(device)
+            
+            loss = criterion(sim_matrix, labels)
             loss.backward()
             optimizer.step()
             
-    # 3. Imputation & Safe Magnitude Restoration
-    print("Injecting Cold Items via Contrastive Projection...")
+    print("Injecting Cold Items via InfoNCE Projection...")
     mapper.eval()
     with torch.no_grad():
         Y_cold_imputed = mapper(X_cold)
         
-        # We use the MEDIAN length of warm items. 
-        # This gives cold items a fair, realistic fighting chance without triggering the Popularity Hack.
+        # Safe Median Magnitude Restoration (Preserves Popularity Physics)
         target_magnitude = torch.norm(Y_warm_true, p=2, dim=1).median()
-        
-        # Normalize to 1.0, then scale safely to the median length
         Y_cold_imputed = torch.nn.functional.normalize(Y_cold_imputed, p=2, dim=1) * target_magnitude
         
         model.item_embedding.weight.data[cold_item_ids] = Y_cold_imputed

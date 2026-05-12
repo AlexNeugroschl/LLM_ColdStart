@@ -2,3 +2,5 @@ recbole
 scikit-learn
 scipy
 tqdm
+requests
+numpy

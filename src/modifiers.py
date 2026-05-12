@@ -13,7 +13,7 @@ import ollama
 from tqdm import tqdm
 
 
-def apply_knn(payload, threshold=5, k_neighbors=5, embed_model='mxbai-embed-large'):
+def apply_knn(payload, threshold=5, k_neighbors=5, embed_model='nomic-embed-text'):
     print(f"\n--- Applying FAISS KNN Semantic Imputation (Threshold < {threshold}) ---")
     state = copy.copy(payload)
     model = state['model']
@@ -246,7 +246,7 @@ class EmbeddingMapper(nn.Module):
     def forward(self, x):
         return self.network(x)
 
-def apply_contrastive_mapper(payload, threshold=5, embed_model='mxbai-embed-large', epochs=100):
+def apply_contrastive_mapper(payload, threshold=5, embed_model='nomic-embed-text', epochs=100):
     print(f"\n--- Training InfoNCE Projection Network (Epochs: {epochs}) ---")
     state = copy.copy(payload)
     model = state['model']

@@ -88,7 +88,14 @@ Analysis:"""
     return response['message']['content']
 
 def generate_embedding(text):
-    payload = {"model": OLLAMA_EMBED_MODEL, "prompt": text, "stream": False}
+    payload = {
+        "model": OLLAMA_EMBED_MODEL, 
+        "prompt": text, 
+        "stream": False,
+        "options": {
+            "num_ctx": 8192  # ⬅️ Force Ollama to use Nomic's maximum context window
+        }
+    }
     response = requests.post(f"{OLLAMA_URL}/embeddings", json=payload).json()
     
     if 'error' in response:
@@ -147,11 +154,13 @@ def run_pipeline(dataset_name="amazon-office", total_items=1000):
     print("\n--- PHASE 2: GENERATING VECTORS FOR ALL 4 STRATEGIES ---")
     strategies = ["raw", "prefixed", "vibe_only", "combination"]
     
-    embed_matrices = {s: np.zeros((total_items, 768)) for s in strategies} # Nomic is 768d!
+    embed_matrices = {s: np.zeros((total_items, 768)) for s in strategies} 
     
     for item_id in tqdm(range(1, total_items), desc="Embedding all variations"):
         str_id = str(item_id)
-        raw_text = get_raw_item_text(item_id)
+        
+        raw_text = str(get_raw_item_text(item_id))[:4000] 
+        
         generated_vibe = vibe_cache.get(str_id, "")
         
         embed_matrices["raw"][item_id] = generate_embedding(raw_text)

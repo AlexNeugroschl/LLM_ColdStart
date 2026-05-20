@@ -1,9 +1,22 @@
 # configs/base_recbole.yaml
-model: BPR
-epochs: 300
-train_batch_size: 4096
-eval_batch_size: 40960
+
+# --- CORE EVALUATION SETTINGS ---
+model: LightGCN             # Updated to reflect our new base architecture
+epochs: 300                 # Maximum epochs allowed
+train_batch_size: 8192      # ⬆️ Bumped to 8192 to max out GPU throughput and speed up epochs
+eval_batch_size: 409600     # ⬆️ Massive eval batch (no gradients needed, so push this to the moon)
 metrics: ['Hit', 'NDCG']
 topk: [10]
 valid_metric: NDCG@10
 metric_decimal_place: 4
+
+# --- SPEED & EARLY STOPPING (THE FIX) ---
+eval_step: 5                # ⬅️ Only run the heavy evaluation math every 5 epochs
+stopping_step: 10           # ⬅️ If NDCG@10 doesn't improve for 10 evaluations (50 epochs), KILL the training early.
+learning_rate: 0.001        # Explicitly set the Adam learning rate
+
+# --- GRAPH ARCHITECTURE PARAMETERS (LightGCN Specific) ---
+embedding_size: 64          # Standard CF dimension
+n_layers: 3                 # The number of message-passing hops (3 is standard for LightGCN)
+reg_weight: 1e-04           # L2 Regularization (Critical for preventing magnitude explosion)
+require_pow: False          # Whether to use D^{-1/2} or D^{-1} in graph normalization

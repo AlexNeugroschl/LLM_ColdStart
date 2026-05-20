@@ -3,4 +3,4 @@ scikit-learn
 scipy
 tqdm
 requests
-numpy
+numpy<2.0.0

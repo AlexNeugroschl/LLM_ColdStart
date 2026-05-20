@@ -16,8 +16,9 @@ from tqdm import tqdm
 import scipy.sparse as sp
 
 
-def apply_tfidf_knn(payload, threshold=5, k_neighbors=1):
-    print(f"\n--- Applying TF-IDF Baseline Imputation (Threshold < {threshold}, K={k_neighbors}) ---")
+
+def apply_tfidf_knn(payload, threshold=5, k_neighbors=1, strategy_name="raw"):
+    print(f"\n--- Applying TF-IDF Baseline Imputation (Threshold < {threshold}, K={k_neighbors}, Strategy={strategy_name.upper()}) ---")
     state = copy.copy(payload)
     model = state['model']
     dataset = state['dataset']
@@ -30,31 +31,60 @@ def apply_tfidf_knn(payload, threshold=5, k_neighbors=1):
     warm_item_ids = np.where((item_counts >= threshold) & (np.arange(item_num) > 0))[0]
     cold_item_ids = np.where((item_counts < threshold) & (np.arange(item_num) > 0))[0]
     
-    # 1. LOAD THE EXACT SAME TEXT USED FOR LLM EMBEDDINGS
-    print(f"Loading universal text mapping for {ds_name}...")
-    json_path = f"dataset/{ds_name}/item_to_text.json"
+    # 1. LOAD THE TEXT DICTIONARIES BASED ON STRATEGY
+    raw_json_path = f"dataset/{ds_name}/item_to_text.json"
+    vibe_json_path = f"dataset/{ds_name}/vibe_cache.json" 
     
-    if not os.path.exists(json_path):
-        raise FileNotFoundError(f"Missing {json_path}. Cannot run TF-IDF.")
-        
-    with open(json_path, 'r', encoding='utf-8') as f:
-        item_to_text = json.load(f)
+    raw_text_dict = {}
+    vibe_text_dict = {}
+    
+    if strategy_name in ["raw", "combination"]:
+        if not os.path.exists(raw_json_path):
+            raise FileNotFoundError(f"Missing {raw_json_path}. Cannot run TF-IDF.")
+        with open(raw_json_path, 'r', encoding='utf-8') as f:
+            raw_text_dict = json.load(f)
+            
+    if strategy_name in ["vibe_only", "combination"]:
+        if not os.path.exists(vibe_json_path):
+            raise FileNotFoundError(f"Missing {vibe_json_path}! TF-IDF needs the raw LLM text saved as a JSON.")
+        with open(vibe_json_path, 'r', encoding='utf-8') as f:
+            vibe_text_dict = json.load(f)
 
     id2token = dataset.field2id_token['item_id']
 
     # 2. Build Text Corpus
     print("Pre-processing text for TF-IDF...")
     item_texts = []
+    valid_count = 0
+    
+    # Map internal IDs to Amazon String IDs
+    id2token = dataset.field2id_token['item_id']
+    
     for item_id in range(item_num):
         if item_id == 0:
             item_texts.append("")
             continue
             
-        original_id = str(id2token[item_id])
-        # If an item has absolutely no text, we give it a blank string. 
-        # TF-IDF will just give it a vector of zeros.
-        text = item_to_text.get(original_id, "") 
-        item_texts.append(text)
+        amazon_id = str(id2token[item_id]) # E.g., "B00000J4EY"
+        internal_id = str(item_id)          # E.g., "123"
+        
+        text_parts = []
+        
+        # Strategy: Use Amazon ID for Raw text, Internal ID for Vibe text
+        if strategy_name in ["raw", "combination"]:
+            text_parts.append(raw_text_dict.get(amazon_id, ""))
+            
+        if strategy_name in ["vibe_only", "combination"]:
+            text_parts.append(vibe_text_dict.get(internal_id, ""))
+            
+        final_text = " ".join(text_parts).strip()
+        
+        if final_text:
+            valid_count += 1
+            
+        item_texts.append(final_text)
+
+    print(f"DEBUG: Found {valid_count} items with non-empty text out of {item_num} total items.")
 
     # 3. Generate TF-IDF Vectors
     print("Vectorizing corpus using TF-IDF...")
@@ -69,7 +99,6 @@ def apply_tfidf_knn(payload, threshold=5, k_neighbors=1):
     nn_model = NearestNeighbors(n_neighbors=k_neighbors, metric='cosine', algorithm='brute')
     nn_model.fit(warm_vectors)
     
-    # Returns the distances and the indices of the nearest warm items
     distances, indices = nn_model.kneighbors(cold_vectors)
     
     with torch.no_grad():
@@ -77,19 +106,16 @@ def apply_tfidf_knn(payload, threshold=5, k_neighbors=1):
             top_k_indices = indices[i]
             neighbor_actual_ids = warm_item_ids[top_k_indices]
             
-            # Fetch embeddings and average them
             neighbor_weights = model.item_embedding.weight.data[neighbor_actual_ids]
             model.item_embedding.weight.data[cold_id] = torch.mean(neighbor_weights, dim=0)
 
     print("TF-IDF Imputation complete!")
     
-    # FLUSH THE CACHE
     model.restore_user_e = None
     model.restore_item_e = None
     
     state['model'] = model
     return state
-
 
 def apply_knn(payload, threshold=5, k_neighbors=5, strategy_name='raw', embed_model='nomic-embed-text'):
     print(f"\n--- Applying FAISS KNN Semantic Imputation (Threshold < {threshold}) ---")

@@ -54,8 +54,6 @@ if __name__ == "__main__":
     pipeline = [
         "setup_amazon.py",
         "setup_ml.py",
-        "setup_steam.py",
-        "split_data.py",
         "extract_text.py",
         "build_semantic_caches.py" 
     ]

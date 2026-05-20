@@ -6,6 +6,7 @@ import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
+
 def plot_pca_space(state, threshold=5, title="Latent Space PCA", filename="pca_plot.png"):
     """
     Extracts item embeddings from the RecBole state, runs a 2D PCA, and saves a scatter plot 
@@ -118,3 +119,65 @@ def plot_knn_sweep(k_values, hit_scores, ndcg_scores, title="KNN Hyperparameter 
     plt.close()
     
     print(f"✅ Plot saved successfully to {save_path}")
+
+
+def generate_visual_plot(results, dataset_name, seed_count):
+    """Generates and saves a statistical bar chart with standard deviation error bars."""
+    os.makedirs('plots', exist_ok=True)
+    
+    # Clean up the labels for the graph
+    labels_map = {
+        "lgcn_baseline": "Baseline\n(Strict)",
+        "lgcn_tf_idf_raw": "TF-IDF\n(Raw)",
+        "lgcn_tf_idf_vibe_only": "TF-IDF\n(LLM Enhanced)",
+        "lgcn_tf_idf_combination": "TF-IDF\n(Combo)",
+        "lgcn_mapper_net": "Mapper\nNetwork",
+        "lgcn_1-nn_raw": "1-NN\n(Raw)",
+        "lgcn_1-nn_vibe_only": "1-NN\n(LLM Enhanced)",
+        "lgcn_1-nn_combination": "1-NN\n(Combo)",
+        "lgcn_graft_raw": "Grafting\n(Raw)",
+        "lgcn_graft_vibe_only": "Grafting\n(LLM Enhanced)",
+        "lgcn_graft_combination": "Grafting\n(Combo)"
+    }
+    
+    # Filter out the Oracle so it doesn't blow out the Y-axis!
+    architectures = [arch for arch in results.keys() if arch != "lgcn_oracle"]
+    
+    x_labels = [labels_map.get(arch, arch) for arch in architectures]
+    
+    # Calculate Means and Standard Deviations
+    hit_means = [np.mean(results[arch]['hit']) for arch in architectures]
+    hit_stds = [np.std(results[arch]['hit']) for arch in architectures]
+    
+    ndcg_means = [np.mean(results[arch]['ndcg']) for arch in architectures]
+    ndcg_stds = [np.std(results[arch]['ndcg']) for arch in architectures]
+    
+    x = np.arange(len(x_labels))
+    
+    # Create a wide side-by-side plot
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 8))
+    
+    # Plot 1: Hit@10
+    ax1.bar(x, hit_means, yerr=hit_stds, capsize=5, color='cornflowerblue', edgecolor='black', alpha=0.8)
+    ax1.set_ylabel('Hit@10', fontsize=12, fontweight='bold')
+    ax1.set_title(f'Hit@10 Performance on {dataset_name.upper()} (Strict Cold-Start)\n({seed_count} Seeds)', fontsize=14, fontweight='bold')
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(x_labels, rotation=45, ha="right", fontsize=10)
+    ax1.grid(axis='y', linestyle='--', alpha=0.7)
+    
+    # Plot 2: NDCG@10
+    ax2.bar(x, ndcg_means, yerr=ndcg_stds, capsize=5, color='mediumseagreen', edgecolor='black', alpha=0.8)
+    ax2.set_ylabel('NDCG@10', fontsize=12, fontweight='bold')
+    ax2.set_title(f'NDCG@10 Performance on {dataset_name.upper()} (Strict Cold-Start)\n({seed_count} Seeds)', fontsize=14, fontweight='bold')
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(x_labels, rotation=45, ha="right", fontsize=10)
+    ax2.grid(axis='y', linestyle='--', alpha=0.7)
+    
+    plt.tight_layout()
+    
+    # Save the plot
+    save_path = f"plots/{dataset_name}_results.png"
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"\n📊 Statistical plot successfully saved to: {save_path}")

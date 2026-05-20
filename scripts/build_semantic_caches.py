@@ -70,7 +70,22 @@ Game Details:
 {text}
 
 Analysis:"""
-    }
+    },
+    'amazon-digital-music': {
+        'system': "You are an expert music psychologist and audiophile.",
+        'task_prefix': "Represent this digital album for a semantic collaborative filtering system: ",
+        'vibe_prompt': """Write a 3-sentence psychological profile of the listener who would buy this specific album. 
+        
+RULES:
+1. Jump straight into the analysis. DO NOT start with "The vibe of this album is..." or "This music targets...".
+2. ZERO generic demographics. You are strictly forbidden from using phrases like "aged 18-35", "teens", or "general audiences".
+3. Anchor the listener's mindset entirely to the album's specific sonic traits, genres, and the emotional or aesthetic resonance they are seeking.
+
+Album Details:
+{text}
+
+Analysis:"""
+    },
 }
 
 # ==========================================
@@ -286,8 +301,9 @@ def run_pipeline(dataset_name="amazon-office"):
 if __name__ == "__main__":
     datasets_to_run = [
         "amazon-office",
+        "amazon-digital-music",
         "ml-1m",
-        "steam"
+        # "steam"
     ]
     
     for dataset in datasets_to_run:

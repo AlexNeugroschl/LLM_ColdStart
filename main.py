@@ -31,7 +31,7 @@ from recbole.quick_start import run_recbole, load_data_and_model
 from recbole.utils import get_trainer
 
 from src.modifiers import apply_knn, apply_contrastive_mapper, apply_graph_grafting, apply_tfidf_knn
-from src.visualization import generate_visual_plot 
+from src.visualization import generate_visual_plot, plot_knn_sweep
 
 class ColdStartExperiment:
     def __init__(self, dataset_name, model_name='LightGCN', is_oracle=False, seed=2024):
@@ -160,6 +160,36 @@ class ColdStartExperiment:
         trainer = get_trainer(config['MODEL_TYPE'], config['model'])(config, model)
         test_result = trainer.evaluate(test_data, load_best_model=False, show_progress=False)
         return test_result
+def run_knn_suite(dataset_name='amazon-office', seeds=[42]):
+    # Define the K-values you want to sweep
+    k_values = [1, 3, 5, 8, 10, 15, 20]
+    
+    # Store results for the sweep
+    sweep_hit = []
+    sweep_ndcg = []
+
+    print(f"\n--- Starting KNN Sweep for {dataset_name} ---")
+
+    for k in k_values:
+        # Standard experiment initialization
+        std_exp = ColdStartExperiment(dataset_name, model_name='LightGCN', is_oracle=False, seed=42)
+        std_exp.prepare_base_model()
+        
+        # Apply KNN with the current K
+        knn_mod = lambda state: apply_knn(state, k_neighbors=k, strategy_name="vibe_only")
+        res = std_exp.run_evaluation(modifier_func=knn_mod, name=f"1-NN (K={k})")
+        
+        sweep_hit.append(res['hit@10'])
+        sweep_ndcg.append(res['ndcg@10'])
+        
+    # After the loop finishes, trigger the plot
+    plot_knn_sweep(
+        k_values=k_values, 
+        hit_scores=sweep_hit, 
+        ndcg_scores=sweep_ndcg, 
+        title=f"KNN Neighbor Sweep: {dataset_name.upper()}",
+        filename=f"knn_sweep_{dataset_name}.png"
+    )
 
 def run_statistical_suite(dataset_name='ml-100k', seeds=None):
     if seeds is None:
@@ -278,8 +308,10 @@ def run_statistical_suite(dataset_name='ml-100k', seeds=None):
 if __name__ == "__main__":
     
     datasets_to_run = [
-        "amazon-office"
+        # "amazon-office",
+        "amazon-digital-music",
     ]
     
     for dataset in datasets_to_run:
         run_statistical_suite(dataset)
+        run_knn_suite(dataset_name=dataset)

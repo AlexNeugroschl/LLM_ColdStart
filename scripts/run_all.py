@@ -5,6 +5,7 @@ import os
 # Map setup scripts to their target dataset folders
 SETUP_MAP = {
     "setup_ml.py": "ml-1m",
+    "setup_ml_100k.py": "ml-100k",
     "setup_steam.py": "steam",
     "setup_amazon.py": "amazon-office"
 }
@@ -42,18 +43,24 @@ def run_script(script_name):
     # Run the script using the current Python environment
     result = subprocess.run([sys.executable, f"scripts/{script_name}"])
     
-    # If the script throws an error, kill the pipeline immediately
+    # If the script throws an error, warn but allow continuation for setup scripts
     if result.returncode != 0:
-        print(f"\n❌ FATAL ERROR: {script_name} crashed! Halting the master pipeline.")
-        sys.exit(1)
-        
-    print(f"\n✅ SUCCESS: {script_name} finished flawlessly.\n")
+        if script_name in ["setup_amazon.py", "setup_ml.py", "setup_ml_100k.py", "setup_steam.py"]:
+            print(f"\n⚠️  WARNING: {script_name} did not complete fully.")
+            print(f"    This may be OK if you are providing the dataset manually.")
+            print(f"    If this is unexpected, resolve the error and re-run.\n")
+        else:
+            print(f"\n❌ FATAL ERROR: {script_name} crashed! Halting the master pipeline.")
+            sys.exit(1)
+    else:
+        print(f"\n✅ SUCCESS: {script_name} finished flawlessly.\n")
 
 if __name__ == "__main__":
     # The exact execution order
     pipeline = [
         "setup_amazon.py",
         "setup_ml.py",
+        "setup_ml_100k.py",
         "extract_text.py",
         "build_semantic_caches.py" 
     ]

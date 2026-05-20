@@ -10,7 +10,9 @@ def load_data(ds_name='amazon-office', is_oracle=False, seed=2024):
 
     dataset_columns = {
         'amazon-office': ['item_id', 'title', 'categories', 'brand', 'description'],
-        'amazon-digital-music': ['item_id', 'title', 'categories', 'brand', 'description']
+        'amazon-digital-music': ['item_id', 'title', 'categories', 'brand', 'description'],
+        'ml-1m': ['item_id', 'movie_title', 'release_year', 'class'],
+        'ml-100k': ['item_id', 'movie_title', 'release_year', 'class']
     }
 
     # 1. Define the dynamic split logic

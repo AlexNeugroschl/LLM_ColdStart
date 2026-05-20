@@ -308,8 +308,8 @@ def run_statistical_suite(dataset_name='ml-100k', seeds=None):
 if __name__ == "__main__":
     
     datasets_to_run = [
-        # "amazon-office",
-        "amazon-digital-music",
+        "amazon-office"
+        # "amazon-digital-music"
     ]
     
     for dataset in datasets_to_run:

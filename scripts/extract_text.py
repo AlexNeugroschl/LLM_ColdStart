@@ -6,10 +6,10 @@ import json
 # Define which columns contain the semantic text for each dataset
 DATASET_TEXT_COLUMNS = {
     'amazon-office': ['title:token_seq', 'brand:token', 'categories:token_seq', 'description:token_seq'],
-    'amazon-digital-music': ['title:token_seq', 'brand:token', 'categories:token_seq', 'description:token_seq'],
-    'ml-1m': ['movie_title:token_seq', 'class:token_seq'], # MovieLens (Sparse)
-    'ml-100k': ['movie_title:token_seq', 'class:token_seq'], # MovieLens 100k (Sparse)
-    'steam': ['app_name:token_seq', 'genres:token_seq', 'tags:token_seq', 'reviews:token_seq'] # Steam (Rich)
+    'amazon-digital-music': ['title:token_seq', 'brand:token', 'categories:token_seq', 'description:token_seq']#,
+    # 'ml-1m': ['movie_title:token_seq', 'class:token_seq'], # MovieLens (Sparse)
+    # 'ml-100k': ['movie_title:token_seq', 'class:token_seq'], # MovieLens 100k (Sparse)
+    # 'steam': ['app_name:token_seq', 'genres:token_seq', 'tags:token_seq', 'reviews:token_seq'] # Steam (Rich)
 }
 
 def extract_text(dataset_name):

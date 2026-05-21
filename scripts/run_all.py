@@ -4,16 +4,16 @@ import os
 
 # Map setup scripts to their target dataset folders
 SETUP_MAP = {
-    "setup_ml.py": "ml-1m",
-    "setup_ml_100k.py": "ml-100k",
-    "setup_steam.py": "steam",
+    # "setup_ml.py": "ml-1m",
+    # "setup_ml_100k.py": "ml-100k",
+    # "setup_steam.py": "steam",
     "setup_amazon.py": "amazon-office"
 }
 
 def check_if_setup_needed(script_name):
     """Checks if the raw RecBole files already exist to prevent redundant parsing."""
     if script_name not in SETUP_MAP:
-        # If it's a processing script (split_data, extract_text, etc.), always run it
+        # If it's a processing script (split_data, extract_text, generate_holdout, etc.), always run it
         return True 
         
     dataset_name = SETUP_MAP[script_name]
@@ -59,8 +59,9 @@ if __name__ == "__main__":
     # The exact execution order
     pipeline = [
         "setup_amazon.py",
-        "setup_ml.py",
-        "setup_ml_100k.py",
+        # "setup_ml.py",
+        # "setup_ml_100k.py",
+        "generate_holdout.py",    # ⬅️ Added here to cut the files before text extraction
         "extract_text.py",
         "build_semantic_caches.py" 
     ]

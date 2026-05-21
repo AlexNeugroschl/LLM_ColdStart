@@ -90,9 +90,9 @@ def plot_knn_sweep(k_values, hit_scores, ndcg_scores, title="KNN Hyperparameter 
     ax1.set_xlabel('K (Number of Neighbors)', fontsize=12, fontweight='bold')
     ax1.set_xticks(k_values)
     
-    # Left Y-Axis (Hit@10)
+    # Left Y-Axis (Hit@50)
     color1 = 'tab:blue'
-    ax1.set_ylabel('Hit@10', color=color1, fontsize=12, fontweight='bold')
+    ax1.set_ylabel('Hit@50', color=color1, fontsize=12, fontweight='bold')
     line1 = ax1.plot(k_values, hit_scores, color=color1, marker='o', linewidth=2, markersize=8, label='Hit@10')
     ax1.tick_params(axis='y', labelcolor=color1)
     
@@ -146,11 +146,10 @@ def generate_visual_plot(results, dataset_name, seed_count):
     x_labels = [labels_map.get(arch, arch) for arch in architectures]
     
     # Calculate Means and Standard Deviations
-    hit_means = [np.mean(results[arch]['hit']) for arch in architectures]
-    hit_stds = [np.std(results[arch]['hit']) for arch in architectures]
-    
-    ndcg_means = [np.mean(results[arch]['ndcg']) for arch in architectures]
-    ndcg_stds = [np.std(results[arch]['ndcg']) for arch in architectures]
+    hit_means = [np.mean(results[arch]['hit@50']) for arch in architectures]
+    hit_stds = [np.std(results[arch]['hit@50']) for arch in architectures]
+    ndcg_means = [np.mean(results[arch]['ndcg@10']) for arch in architectures]
+    ndcg_stds = [np.std(results[arch]['ndcg@10']) for arch in architectures]
     
     x = np.arange(len(x_labels))
     
@@ -159,8 +158,8 @@ def generate_visual_plot(results, dataset_name, seed_count):
     
     # Plot 1: Hit@10
     ax1.bar(x, hit_means, yerr=hit_stds, capsize=5, color='cornflowerblue', edgecolor='black', alpha=0.8)
-    ax1.set_ylabel('Hit@10', fontsize=12, fontweight='bold')
-    ax1.set_title(f'Hit@10 Performance on {dataset_name.upper()} (Strict Cold-Start)\n({seed_count} Seeds)', fontsize=14, fontweight='bold')
+    ax1.set_ylabel('Hit@50', fontsize=12, fontweight='bold')
+    ax1.set_title(f'Hit@50 Performance on {dataset_name.upper()} (Strict Cold-Start)\n({seed_count} Seeds)', fontsize=14, fontweight='bold')
     ax1.set_xticks(x)
     ax1.set_xticklabels(x_labels, rotation=45, ha="right", fontsize=10)
     ax1.grid(axis='y', linestyle='--', alpha=0.7)

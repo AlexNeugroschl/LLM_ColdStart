@@ -191,19 +191,7 @@ def unload_model(model_name):
 # ==========================================
 def run_pipeline(dataset_name="amazon-office"):
     print(f"=== 🏗️ RUNNING 4-AXIS ABLATION PIPELINE FOR {dataset_name} ===")
-    
-    # Check if dataset's text cache exists before proceeding
-    text_cache_path = f"dataset/{dataset_name}/item_to_text.json"
-    if not os.path.exists(text_cache_path):
-        print(f"⏭️  SKIPPING {dataset_name}: {text_cache_path} not found.")
-        print(f"    (Run setup + extract_text.py first for this dataset.)\n")
-        return
-    
-    try:
-        total_items = initialize_text_mapping(dataset_name)
-    except FileNotFoundError as e:
-        print(f"⏭️  SKIPPING {dataset_name}: {e}\n")
-        return
+    total_items = initialize_text_mapping(dataset_name) 
     
     # Grab the specific prompts for this domain
     prompts = DATASET_PROMPTS.get(dataset_name, DATASET_PROMPTS['amazon-office'])
@@ -329,8 +317,8 @@ if __name__ == "__main__":
     datasets_to_run = [
         "amazon-office",
         "amazon-digital-music",
-        "ml-1m",
-        "ml-100k",
+        # "ml-1m",
+        # "ml-100k",
         # "steam"
     ]
     
